@@ -3,6 +3,8 @@
     that accepts the grayscale image only
     This reduces the parameters count of the model also.
 
+    Compressai environment is required for this as the original model
+    will be imported from the compressai library
 
     How to use this is that the run this script
     -script downloads the org BMSHJ model
