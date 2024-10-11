@@ -12,6 +12,7 @@
     -draws the inference from the grayscale version of the model
 """
 import time
+import argparse
 import torch 
 import numpy as np
 import torch.nn as nn
@@ -37,7 +38,24 @@ metric="ms-ssim"
 #print("Model architecture is like")
 #print(net)
 
+def load_model(model_path,device="cuda"):
+    """loads the saved model from the path"""
 
+    model_name="bmshj2018-factorized"
+    quality=4
+    metric="ms-ssim"
+    model=models[model_name](quality=quality,metric=metric)
+    
+    checkpoint=torch.load(model_path,map_location=device)
+    print(checkpoint.keys())
+
+    model.load_state_dict(checkpoint["state_dict"])
+    
+    #model=checkpoint["model"]
+    model.eval()
+    print("MODEL IS:", model)
+    print("model is loaded")
+    return model
 
 #modify the first layer of the encoder (g_a) to accept only single channel
 def modify_model_gray(model):
@@ -55,7 +73,8 @@ def modify_model_gray(model):
         
     #replace the old conv layer with the new one
     model.g_a[0]=new_conv
-    
+    params=sum(p.numel() for p in model.parameters())
+    print("Parameters in the gray converted model are:",params)
     #return the new model
     return model            
 
@@ -64,6 +83,10 @@ def image_process(image_path):
     #resize image to HD resolution  
     #image=image.resize((1280,1280))
     image=image.convert("L") #convert to grayscale
+    return np.array(image)
+
+def rgb_image(image_path):
+    image=Image.open(image_path)
     return np.array(image)
 
 def gray_3_channel(image_path):
@@ -93,15 +116,8 @@ def gray_3_channel(image_path):
     
     
 
-def inference(model,image):
+def inference(model,image,image_name):
     """ Expects the image as the numpy array
-
-    Args:
-        model (_type_): _description_
-        image (_type_): _description_
-
-    Returns:
-        _type_: _description_
     """
     
     #resize and normalize the image
@@ -125,8 +141,8 @@ def inference(model,image):
     #print("shape is:",output.shape)
     #print(output)
     image=Image.fromarray(output)
-    image.save("output.png")
-    #image.show()
+    image.save(image_name)
+    image.show()
     return out_net
 
 def org_model():
@@ -134,24 +150,55 @@ def org_model():
     quality=4
     metric="ms-ssim"
     model=models[model_name](quality=quality,metric=metric,pretrained=True).eval().to(device)
+    params=sum(p.numel() for p in model.parameters())
+    print("Parameters in the Original Model are:",params)
     return model
 
-def main(image_path):
+def main(args):
+    
+    image_path=args.image_path
+    model_path=args.model_path
     
     model_org=org_model()
-    image=gray_3_channel(image_path)
+    image=gray_3_channel(image_path) #get the 3channel gray image for the original model 
+    #image=rgb_image(image_path)
     print("Original model compression time is:")
-    inference(model_org,image)
+    image_name="output_org_bmshj_3channel_4.png"
+    inference(model_org,image,image_name)
     
     print()
     print()
-    model_modified=modify_model_gray(model_org)
-    image=image_process(image_path)
-    print("Modified model compression time is:")
-    inference(model_modified,image)
+    
+    if args.org:
+        print("Original Compressai library model is used and converted to gray")
+        
+        #in below code it takes the original compressai model
+        model_modified=modify_model_gray(model_org)
+        image_name="output_org_bmshj_gray_4.png"
+        inference(model_modified,image,image_name)
+    else:
+        #here we take the fine tuned model and convert it to gray
+        print("fine tuned model is loaded from the checkpoint and converted to the gray version")
+        fine_tuned_model=load_model(model_path,device="cuda")
+        model_modified=modify_model_gray(fine_tuned_model)
+        image=image_process(image_path)
+        image_name="output_fine_tuned_bmshj_4.png"
+        print("Modified model compression time is:")
+        inference(model_modified,image,image_name)
 
 if __name__=="__main__":
-    image_path=r"C:\Swapnil\Narrowband_DRONE\Image_compression_code\Final_DL_compession_September_24\DL_MODEL_FINETUNE\image.png"
-    main(image_path)
+    
+    #make the parser object
+    parser=argparse.ArgumentParser()
+    
+    parser.add_argument("--image_path",type=str,help="Path to the image")
+    parser.add_argument("--model_path",type=str,help="Path to the model if the model is to be loaded from the checkpoint")
+    parser.add_argument("--org",action="store_true",help="If the original model is to be used from the compressai library")
+    
+    args=parser.parse_args()
+    main(args.image_path,args.model_path)
+    #image_path=r"C:\Swapnil\Narrowband_DRONE\Image_compression_code\Final_DL_compession_September_24\DL_MODEL_FINETUNE\image.png"
+    #model_path=r"C:\Swapnil\Narrowband_DRONE\Image_compression_code\Final_DL_compession_September_24\DL_MODEL_FINETUNE\Grayscale_version_DL\checkpoint_best_loss.pth.tar"
+    #main(image_path,model_path)
     #gray_3_channel(image_path)
     
